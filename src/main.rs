@@ -20,20 +20,38 @@ enum AppState {
     Settings,
 }
 
+#[derive(Serialize, Deserialize, Default, Debug)]
+struct SettingsState {
+    max_results: i8,
+    first_run: bool,
+}
+impl SettingsState {
+    fn _default() -> Self {
+        Self {
+            max_results: 8,
+            first_run: true,
+        }
+    }
+}
+
 #[derive(Default)]
 struct YtGUI {
     data: SearchResponse,
     search_text: String,
     side_width: f32,
-    max_results: i8,
-    app_state: AppState,
+    settings_state: SettingsState,
     image_loader_installed: bool,
+    app_state: AppState,
 }
 
 impl YtGUI {
-    fn default() -> Self {
+    fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        let settings_state: SettingsState = cc
+            .storage
+            .and_then(|storage| eframe::get_value(storage, eframe::APP_KEY))
+            .unwrap_or_default();
         Self {
-            max_results: 5,
+            settings_state,
             ..Default::default()
         }
     }
@@ -65,7 +83,8 @@ impl YtGUI {
                     if !searchfield.has_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter))
                         || search_button.clicked()
                     {
-                        self.data = call_yt_api(&self.search_text, self.max_results).unwrap();
+                        self.data = call_yt_api(&self.search_text, self.settings_state.max_results)
+                            .unwrap();
                         self.search_text.clear();
                     }
 
@@ -79,55 +98,51 @@ impl YtGUI {
                 .response;
                 ui.allocate_space(vec2(ui.available_width(), 10.0));
 
-                ui.group(|ui| {
-                    ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
-                        egui::ScrollArea::vertical()
-                            .auto_shrink(false)
-                            .show(ui, |ui| {
-                                for item in &mut self.data.items {
-                                    ui.horizontal(|ui| {
-                                        let thumbnail_url: &str = if let Some(ref thumb) =
-                                            item.snippet.thumbnails.default
-                                        {
+                ui.add_space(40.0);
+                ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
+                    egui::ScrollArea::vertical()
+                        .auto_shrink(false)
+                        .show(ui, |ui| {
+                            for item in &mut self.data.items {
+                                ui.horizontal(|ui| {
+                                    let thumbnail_url: &str =
+                                        if let Some(ref thumb) = item.snippet.thumbnails.default {
                                             &thumb.url
                                         } else {
                                             "notfound"
                                         };
 
-                                        let image = egui::Image::from_uri(thumbnail_url)
-                                            .fit_to_exact_size(vec2(WIDTH, HEIGHT));
-                                        ui.add(image);
+                                    let image = egui::Image::from_uri(thumbnail_url)
+                                        .fit_to_exact_size(vec2(WIDTH, HEIGHT));
+                                    ui.add(image);
 
-                                        ui.add_space(40.0);
-                                        ui.vertical(|ui| {
-                                            ui.label(&item.snippet.title);
-                                            ui.colored_label(
-                                                Color32::GRAY,
-                                                &item.snippet.channel_title,
-                                            );
-                                            ui.add_space(10.0);
-                                            if ui.add(Button::new("Download")).clicked() {
-                                                if let Some(video_id) = &item.id.video_id {
-                                                    let yt_link = format!(
-                                                        "https://www.youtube.com/watch?v={}",
-                                                        video_id
-                                                    );
-                                                    println!("{}", yt_link);
-                                                } else {
-                                                    println!(
-                                                        "Fehler Video_id nicht gefunden. Think"
-                                                    );
-                                                }
-                                            };
-                                        });
+                                    ui.add_space(40.0);
+                                    ui.vertical(|ui| {
+                                        ui.label(&item.snippet.title);
+                                        ui.colored_label(
+                                            Color32::GRAY,
+                                            &item.snippet.channel_title,
+                                        );
+                                        ui.add_space(10.0);
+                                        if ui.add(Button::new("Download")).clicked() {
+                                            if let Some(video_id) = &item.id.video_id {
+                                                let yt_link = format!(
+                                                    "https://www.youtube.com/watch?v={}",
+                                                    video_id
+                                                );
+                                                println!("python socket... {}", yt_link);
+                                            } else {
+                                                println!("Fehler Video_id nicht gefunden. Think");
+                                            }
+                                        };
                                     });
-                                    ui.add_space(20.0);
-                                    ui.add(egui::Separator::default());
-                                    ui.add_space(20.0);
-                                }
-                            });
-                        ui.allocate_space(ui.available_size());
-                    });
+                                });
+                                ui.add_space(20.0);
+                                ui.add(egui::Separator::default());
+                                ui.add_space(20.0);
+                            }
+                        });
+                    ui.allocate_space(ui.available_size());
                 });
             });
         });
@@ -135,8 +150,14 @@ impl YtGUI {
 }
 
 impl eframe::App for YtGUI {
+    fn save(&mut self, storage: &mut dyn eframe::Storage) {
+        eframe::set_value(storage, eframe::APP_KEY, &self.settings_state);
+    }
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        global_fontsize(ctx);
+        if !self.settings_state.first_run {
+            global_fontsize(ctx);
+            self.settings_state.first_run = false;
+        }
         let screen_rect = ctx.screen_rect();
         let panel_size = calc_grid_size(&screen_rect, None);
         self.side_width = panel_size.side_width;
@@ -154,12 +175,16 @@ impl eframe::App for YtGUI {
                 egui::SidePanel::left(egui::Id::new("left_side"))
                     .exact_width(self.side_width)
                     .frame(egui::Frame::default().fill(ctx.style().visuals.panel_fill))
-                    .show(ctx, |ui| {});
+                    .show_separator_line(false)
+                    .resizable(false)
+                    .show(ctx, |_ui| {});
 
                 egui::SidePanel::right(egui::Id::new("right_side"))
                     .exact_width(self.side_width)
                     .frame(egui::Frame::default().fill(ctx.style().visuals.panel_fill))
-                    .show(ctx, |ui| {});
+                    .show_separator_line(false)
+                    .resizable(false)
+                    .show(ctx, |_ui| {});
 
                 egui::CentralPanel::default().show(ctx, |ui| {
                     self.search_bar(ui);
@@ -169,18 +194,21 @@ impl eframe::App for YtGUI {
                 egui::SidePanel::left(egui::Id::new("left_side"))
                     .exact_width(self.side_width)
                     .frame(egui::Frame::default().fill(ctx.style().visuals.panel_fill))
-                    .show(ctx, |ui| {});
+                    .show(ctx, |_ui| {});
 
                 egui::SidePanel::right(egui::Id::new("right_side"))
                     .exact_width(self.side_width)
                     .frame(egui::Frame::default().fill(ctx.style().visuals.panel_fill))
-                    .show(ctx, |ui| {});
+                    .show(ctx, |_ui| {});
 
                 egui::CentralPanel::default().show(ctx, |ui| {
                     if ui.button("back to app").clicked() {
                         self.app_state = AppState::App;
                     }
-                    ui.add(egui::Slider::new(&mut self.max_results, 0..=15));
+                    ui.add(egui::Slider::new(
+                        &mut self.settings_state.max_results,
+                        0..=25,
+                    ));
                 });
             }
         }
@@ -235,7 +263,7 @@ fn calc_grid_size(screen_rect: &Rect, scaling_factor: Option<f32>) -> PanelSize 
     // let right_side = left_side.clone();
     PanelSize {
         side_width,
-        central_width,
+        _central_width: central_width,
     }
 }
 
@@ -280,7 +308,7 @@ fn main() {
     let app = eframe::run_native(
         "Hier Name",
         options,
-        Box::new(|_cc| Ok(Box::new(YtGUI::default()))),
+        Box::new(|cc| Ok(Box::new(YtGUI::new(cc)))),
     );
     if let Err(error) = app {
         eprint!("Fehler beim Starten der App: {}", error);
@@ -393,5 +421,5 @@ pub struct ThumbnailData {
 
 struct PanelSize {
     side_width: f32,
-    central_width: f32,
+    _central_width: f32,
 }
