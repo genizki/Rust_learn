@@ -33,15 +33,13 @@ enum WorkerMessage {
 }
 
 struct TokioWorker {
-    rt: tokio::runtime::Runtime,
     tx: tokio::sync::mpsc::Sender<WorkerMessage>,
     rx: tokio::sync::mpsc::Receiver<WorkerMessage>,
 }
 impl Default for TokioWorker {
     fn default() -> Self {
-        let rt = tokio::runtime::Builder::new_multi_thread().build().unwrap(); // Handle me !!!!
         let (tx, rx) = tokio::sync::mpsc::channel(102);
-        Self { rt, tx, rx }
+        Self { tx, rx }
     }
 }
 
@@ -93,7 +91,7 @@ impl YtGUI {
             ..Default::default()
         }
     }
-    fn search_bar(&mut self, ui: &mut egui::Ui) {
+    fn search_bar(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
         egui::Frame::default()
             .show(ui, |ui| {
                 ui.style_mut().spacing.item_spacing = egui::Vec2 { x: 0.0, y: 0.0 };
@@ -125,11 +123,15 @@ impl YtGUI {
                             let search_string = self.search_text.clone();
                             let max_reults = self.settings_state.max_results.clone();
                             let rx = self.tokio_worker.tx.clone();
+                            let ctx_giver = ctx.clone();
+
                             tokio::spawn(async move {
                                 let data = call_yt_api(search_string, max_reults).await.unwrap();
                                 rx.send(WorkerMessage::Data(data)).await.unwrap();
                                 // rx.send({ data })
+                                ctx_giver.request_repaint();
                             });
+
                             self.search_text.clear();
                         }
 
@@ -258,7 +260,7 @@ impl eframe::App for YtGUI {
 
         match self.app_state {
             AppState::App => {
-                layout(self.side_width, ctx, |ui| self.search_bar(ui), false);
+                layout(self.side_width, ctx, |ui| self.search_bar(ctx, ui), false);
             }
             AppState::Settings => {
                 layout(
@@ -610,12 +612,9 @@ async fn downlaod_from_dlp(
         { &url },
     ];
 
-    let output = tokio::process::Command::new(YT_DLP_BINARY)
+    tokio::process::Command::new(YT_DLP_BINARY)
         .args(&command)
-        .output()
-        .await
-        .unwrap();
+        .stdout(std::process::Stdio::piped());
 
-    println!("Done: {:?}", output);
     rx.send(WorkerMessage::Done(item_id)).await.unwrap();
 }
