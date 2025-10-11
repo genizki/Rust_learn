@@ -29,7 +29,7 @@ Speichere beide Binaries (`ffmpeg` und `ffprobe`) im Ordner `ffmpeg` im Projektv
 
 **Wichtig**: Die Binaries müssen ausführbar sein, damit sie vom Programm verwendet werden können.
 
-#### Auf Mac/Linux:
+#### Auf Mac:
 
 Öffne ein Terminal im Projektverzeichnis und führe folgende Befehle aus:
 
@@ -67,5 +67,5 @@ rust-journey/
 ├── ffmpeg/
 │   ├── ffmpeg (oder ffmpeg.exe)
 │   └── ffprobe (oder ffprobe.exe)
-└── ... (weitere Projektdateien)
+└── src/...
 ```
