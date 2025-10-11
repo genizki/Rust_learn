@@ -63,7 +63,7 @@ Stelle sicher, dass folgende Ordnerstruktur vorhanden ist:
 ```
 rust-journey/
 ├── yt_dlp/
-│   └── yt-dlp (oder yt-dlp.exe)
+│   └── yt-dlp_macos (oder yt-dlp.exe)
 ├── ffmpeg/
 │   ├── ffmpeg (oder ffmpeg.exe)
 │   └── ffprobe (oder ffprobe.exe)
