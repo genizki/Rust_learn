@@ -35,7 +35,7 @@ Speichere beide Binaries (`ffmpeg` und `ffprobe`) im Ordner `ffmpeg` im Projektv
 
 ```bash
 # Berechtigungen für yt-dlp setzen
-chmod +x yt_dlp/yt-dlp
+chmod +x yt_dlp/yt-dlp_macos
 
 # Berechtigungen für ffmpeg und ffprobe setzen
 chmod +x ffmpeg/ffmpeg
