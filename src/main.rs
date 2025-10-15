@@ -26,7 +26,7 @@ const YT_DLP_BINARY: &str = "./yt_dlp/yt-dlp.exe";
 const YT_DLP_BINARY: &str = "./yt_dlp/yt-dlp_macos";
 
 enum WorkerMessage {
-    Data(SearchResponse, SearchDuration),
+    Data(SearchResponse),
     Progress(u32),
     Error(String),
     Done(usize),
@@ -70,7 +70,6 @@ impl SettingsState {
 #[derive(Default)]
 struct YtGUI {
     data: SearchResponse,
-    data_meta: SearchDuration,
     search_item: Vec<SearchResponseMeta>,
     search_text: String,
     side_width: f32,
@@ -127,16 +126,17 @@ impl YtGUI {
                             let ctx_giver = ctx.clone();
 
                             tokio::spawn(async move {
-                                let data = call_yt_api(search_string, max_reults).await.unwrap();
+                                let mut data =
+                                    call_yt_api(search_string, max_reults).await.unwrap();
                                 let mut ex_video_ids: Vec<String> = Vec::new();
                                 for item in &data.items {
                                     if let Some(video_id) = &item.id.video_id {
                                         ex_video_ids.push(video_id.clone());
                                     }
                                 }
-                                let metadata = get_video_durration(ex_video_ids).await.unwrap();
+                                set_video_durration(ex_video_ids, &mut data).await.unwrap();
 
-                                rx.send(WorkerMessage::Data(data, metadata)).await.unwrap();
+                                rx.send(WorkerMessage::Data(data)).await.unwrap();
                                 // rx.send({ data })
                                 ctx_giver.request_repaint();
                             });
@@ -177,12 +177,8 @@ impl YtGUI {
                                             .fit_to_exact_size(vec2(WIDTH, HEIGHT));
                                         ui.vertical(|ui| {
                                             ui.add(image);
-                                            if let Some(video_id) = item.id.video_id.as_ref() {
-                                                if let Some(duration) =
-                                                    find_duration(video_id, &self.data_meta.items)
-                                                {
-                                                    ui.label(duration);
-                                                }
+                                            if let Some(duration) = item.video_durration.as_ref() {
+                                                ui.label(duration);
                                             }
                                         });
 
@@ -276,9 +272,8 @@ impl eframe::App for YtGUI {
                 }
                 WorkerMessage::Progress(progress_value) => {}
                 WorkerMessage::Error(error_msg) => {}
-                WorkerMessage::Data(data, metadata) => {
+                WorkerMessage::Data(data) => {
                     self.data = data;
-                    self.data_meta = metadata;
                 }
             }
         }
@@ -541,10 +536,10 @@ async fn call_yt_api(
     Ok(data) // main must return something, in this case (). Finish request block and change Result type to SeachResponse
 }
 
-async fn get_video_durration(
+async fn set_video_durration(
     video_id: Vec<String>,
-) -> Result<SearchDuration, Box<dyn std::error::Error>> {
-    let mut meta_data: SearchDuration = SearchDuration { items: Vec::new() };
+    meta_data: &mut SearchResponse,
+) -> Result<(), Box<dyn std::error::Error>> {
     let final_string = video_id.join(",");
     let key = env::var("YT_API").unwrap();
     let url = format!(
@@ -571,14 +566,17 @@ async fn get_video_durration(
                     .replace("H", ":")
                     .replace("M", ":")
                     .replace("S", "");
-                meta_data.items.push(SearchDurationItem {
-                    video_id: video_id.to_string(),
-                    video_durration: formatted_duration,
-                });
+                for item in meta_data.items.iter_mut() {
+                    if let Some(obj_video_id) = item.id.video_id.as_ref() {
+                        if obj_video_id == video_id {
+                            item.video_durration = Some(formatted_duration.clone());
+                        }
+                    }
+                }
             }
         }
     }
-    Ok(meta_data)
+    Ok(())
 }
 
 #[derive(Default)]
@@ -619,6 +617,10 @@ pub struct SearchItem {
     pub etag: String,
     pub id: Id,
     pub snippet: Snippet,
+    #[serde(skip)]
+    pub is_enabled: bool,
+    #[serde(skip)]
+    pub video_durration: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -752,11 +754,4 @@ async fn test_io() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     Ok(())
-}
-
-fn find_duration(search_id: &String, items: &Vec<SearchDurationItem>) -> Option<String> {
-    items
-        .iter()
-        .find(|item| &item.video_id == search_id)
-        .map(|item| item.video_durration.clone())
 }
